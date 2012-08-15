@@ -54,14 +54,14 @@ func (f *Foo) Deliver403() {
 }
 
 var httphandler_test = []struct {
-	url string
+	url      string
 	respcode int
-	output string
+	output   string
 }{
-	{ "/page", http.StatusOK, "called page" },
-	{ "/add/23/42", http.StatusOK, "-65-" },
-	{ "/bla/foobar/129374/3.5", http.StatusOK, "-foobar|129374-3.5-" },
-	{ "/deliver403", http.StatusForbidden, "delivered 403" },
+	{"/page", http.StatusOK, "called page"},
+	{"/add/23/42", http.StatusOK, "-65-"},
+	{"/bla/foobar/129374/3.5", http.StatusOK, "-foobar|129374-3.5-"},
+	{"/deliver403", http.StatusForbidden, "delivered 403"},
 }
 
 func TestHTTPHandler(t *testing.T) {
@@ -75,7 +75,7 @@ func TestHTTPHandler(t *testing.T) {
 
 	for _, test := range httphandler_test {
 		resp.Buffer.Reset()
-		req, _ := http.NewRequest("GET", "http://localhost:80" + test.url, nil)
+		req, _ := http.NewRequest("GET", "http://localhost:80"+test.url, nil)
 		handler.ServeHTTP(resp, req)
 		if resp.StatusCode != test.respcode {
 			t.Errorf("%s didn't deliver correct %d code; %d instead", test.url, test.respcode, resp.StatusCode)
@@ -85,4 +85,23 @@ func TestHTTPHandler(t *testing.T) {
 		}
 	}
 
+}
+
+func BenchmarkHTTPHandler(b *testing.B) {
+	b.StopTimer()
+
+	resp := NewMockResponseWriter()
+	foo := &Foo{}
+	foo.setResponseWriter(resp)
+	handler, _ := newHTTPHandler(func() interface{} { return foo }, "/", "")
+
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		resp.Buffer.Reset()
+		req, _ := http.NewRequest("GET", "http://localhost:80/bla/foobar/1234/0.1", nil)
+		b.StartTimer()
+		handler.ServeHTTP(resp, req)
+	}
 }
