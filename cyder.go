@@ -121,7 +121,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		method = "index"
 	}
 
-	fmt.Printf("calling %s\n", method)
 	m, ok := h.methods[method]
 	if !ok {
 		if h.fileserver != nil {
@@ -133,7 +132,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(path_elements)+1 != m.Type.NumIn() {
-		fmt.Printf("expected %d arguments, got %d.\n", m.Type.NumIn(), len(path_elements))
 		http.Error(w, "incorrect number of arguments", http.StatusBadRequest)
 		return
 	}
@@ -146,7 +144,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		funcarg := m.Type.In(i+1)
 		newarg, err := convertArgument(arg, funcarg)
 		if err != nil {
-			fmt.Printf("%s: converting arg %d (%s) failed: %v\n", method, i, arg, err)
 			http.Error(w, "incorrect argument", http.StatusBadRequest)
 			return
 		}
