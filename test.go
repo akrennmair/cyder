@@ -19,6 +19,11 @@ func (f *Foo) Foobar() {
 	fmt.Fprintf(f, "hello world from foobar")
 }
 
+func (f *Foo) Pope(a int) {
+	f.WriteHeader(200)
+	fmt.Fprintf(f, "Pope: %d", a)
+}
+
 type Index struct {
 	cyder.Controller
 }
