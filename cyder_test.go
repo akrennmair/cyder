@@ -48,6 +48,22 @@ func (f *Foo) Bla(a string, b uint32, x float64) {
 	fmt.Fprintf(f, "-%s|%d-%.1f-", a, b, x)
 }
 
+func (f *Foo) Deliver403() {
+	f.WriteHeader(403)
+	fmt.Fprintf(f, "delivered 403")
+}
+
+var httphandler_test = []struct {
+	url string
+	respcode int
+	output string
+}{
+	{ "/page", http.StatusOK, "called page" },
+	{ "/add/23/42", http.StatusOK, "-65-" },
+	{ "/bla/foobar/129374/3.5", http.StatusOK, "-foobar|129374-3.5-" },
+	{ "/deliver403", http.StatusForbidden, "delivered 403" },
+}
+
 func TestHTTPHandler(t *testing.T) {
 	resp := NewMockResponseWriter()
 	foo := &Foo{}
@@ -57,28 +73,16 @@ func TestHTTPHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req, _ := http.NewRequest("GET", "http://localhost:80/page", nil)
-
-	handler.ServeHTTP(resp, req)
-	if resp.StatusCode != http.StatusOK {
-		t.Error("/page didn't deliver correct 200 code")
+	for _, test := range httphandler_test {
+		resp.Buffer.Reset()
+		req, _ := http.NewRequest("GET", "http://localhost:80" + test.url, nil)
+		handler.ServeHTTP(resp, req)
+		if resp.StatusCode != test.respcode {
+			t.Errorf("%s didn't deliver correct %d code; %d instead", test.url, test.respcode, resp.StatusCode)
+		}
+		if resp.Buffer.String() != test.output {
+			t.Errorf("%s didn't return correct content '%s'; '%s' instead", test.url, test.output, resp.Buffer.String())
+		}
 	}
 
-	if resp.Buffer.String() != "called page" {
-		t.Errorf("/page didn't return correct content; '%s' instead", resp.Buffer.String())
-	}
-
-	req, _ = http.NewRequest("GET", "http://localhost:80/add/23/42", nil)
-	resp.Buffer.Reset()
-	handler.ServeHTTP(resp, req)
-	if resp.Buffer.String() != "-65-" {
-		t.Errorf("/add/23/42 didn't return correct content; '%s' instead", resp.Buffer.String())
-	}
-
-	req, _ = http.NewRequest("GET", "http://localhost:80/bla/foobar/129374/3.5", nil)
-	resp.Buffer.Reset()
-	handler.ServeHTTP(resp, req)
-	if resp.Buffer.String() != "-foobar|129374-3.5-" {
-		t.Errorf("/bla/foobar/129374/3.5 didn't return correct content; '%s' instead", resp.Buffer.String())
-	}
 }
