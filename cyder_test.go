@@ -32,25 +32,23 @@ func (w *MockResponseWriter) Write(b []byte) (int, error) {
 	return w.Buffer.Write(b)
 }
 
-type Foo struct {
-	Controller
+type Foo struct { }
+
+func (f *Foo) Page(rr *RequestResponse) {
+	fmt.Fprintf(rr.W, "called page")
 }
 
-func (f *Foo) Page() {
-	fmt.Fprintf(f, "called page")
+func (f *Foo) Add(rr *RequestResponse, a, b int) {
+	fmt.Fprintf(rr.W, "-%d-", a+b)
 }
 
-func (f *Foo) Add(a, b int) {
-	fmt.Fprintf(f, "-%d-", a+b)
+func (f *Foo) Bla(rr *RequestResponse, a string, b uint32, x float64) {
+	fmt.Fprintf(rr.W, "-%s|%d-%.1f-", a, b, x)
 }
 
-func (f *Foo) Bla(a string, b uint32, x float64) {
-	fmt.Fprintf(f, "-%s|%d-%.1f-", a, b, x)
-}
-
-func (f *Foo) Deliver403() {
-	f.WriteHeader(403)
-	fmt.Fprintf(f, "delivered 403")
+func (f *Foo) Deliver403(rr *RequestResponse) {
+	rr.W.WriteHeader(403)
+	fmt.Fprintf(rr.W, "delivered 403")
 }
 
 var httphandler_test = []struct {
@@ -67,11 +65,7 @@ var httphandler_test = []struct {
 func TestHTTPHandler(t *testing.T) {
 	resp := NewMockResponseWriter()
 	foo := &Foo{}
-	foo.setResponseWriter(resp)
-	handler, err := newHTTPHandler(func() interface{} { return foo }, "/", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := Handler(foo)
 
 	for _, test := range httphandler_test {
 		resp.Buffer.Reset()
@@ -92,8 +86,7 @@ func BenchmarkHTTPHandler(b *testing.B) {
 
 	resp := NewMockResponseWriter()
 	foo := &Foo{}
-	foo.setResponseWriter(resp)
-	handler, _ := newHTTPHandler(func() interface{} { return foo }, "/", "")
+	handler := Handler(foo)
 
 	b.StartTimer()
 

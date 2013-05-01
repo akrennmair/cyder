@@ -97,16 +97,18 @@ type RequestResponse struct {
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path_elements := strings.Split(r.URL.Path[1:], "/")
 
-	method := path_elements[0]
+	methodName := path_elements[0]
 	path_elements = path_elements[1:]
 
-	if method == "" {
-		method = "index"
+	if methodName == "" {
+		methodName = "index"
 	}
 
-	m, ok := h.methods[method]
+	httpMethod := getHTTPMethod(r.Method)
+
+	m, ok := h.methods[httpMethod][methodName]
 	if !ok {
-		http.Error(w, fmt.Sprintf("page %s not found", method), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("page %s not found", methodName), http.StatusNotFound)
 		return
 	}
 
@@ -122,7 +124,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		funcarg := m.Type.In(i+2)
 		newarg, err := convertArgument(arg, funcarg)
 		if err != nil {
-			log.Printf("%s: converting arg %d (%s) failed: %v", method, i, arg, err)
+			log.Printf("%s: converting arg %d (%s) failed: %v", methodName, i, arg, err)
 			http.Error(w, fmt.Sprintf("incorrect argument %d", i+1), http.StatusBadRequest)
 			return
 		}
