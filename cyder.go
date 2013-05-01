@@ -4,58 +4,12 @@ import (
 	"errors"
 	"io"
 	"fmt"
+	"log"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 )
-
-
-type Application struct {
-	mux        *http.ServeMux
-	server     *http.Server
-	htdocs_dir string
-}
-
-func NewApplication() *Application {
-	app := &Application{}
-	app.mux = http.NewServeMux()
-	return app
-}
-
-func (app *Application) SetHtdocs(htdocs string) {
-	app.htdocs_dir = htdocs
-}
-
-func (app *Application) RegisterController(prefix string, generator func() interface{}) error {
-	if prefix == "" || prefix[0:1] != "/" || prefix[len(prefix)-1:] != "/" {
-		return errors.New("invalid prefix (must be non-empty and begin and end with /)")
-	}
-	if generator == nil {
-		return errors.New("invalid nil generator")
-	}
-
-	if handler, err := newHTTPHandler(generator, prefix, app.htdocs_dir); err != nil {
-		return err
-	} else {
-		app.mux.Handle(prefix, http.StripPrefix(prefix[0:len(prefix)-1], handler))
-	}
-	return nil
-}
-
-func (app *Application) ListenAndServe(addr string) error {
-	app.server = &http.Server{Handler: app.mux, Addr: addr}
-	return app.server.ListenAndServe()
-}
-
-func (app *Application) ListenAndServeTLS(addr, certfile, keyfile string) error {
-	app.server = &http.Server{Handler: app.mux, Addr: addr}
-	return app.server.ListenAndServeTLS(certfile, keyfile)
-}
-
-type Controller struct {
-	rw http.ResponseWriter
-}
 
 type httpController interface {
 	Header() http.Header
@@ -64,51 +18,80 @@ type httpController interface {
 	io.Writer
 }
 
-func (c *Controller) setResponseWriter(w http.ResponseWriter) {
-	c.rw = w
-}
-
-func (c *Controller) Header() http.Header {
-	return c.rw.Header()
-}
-
-func (c *Controller) WriteHeader(code int) {
-	c.rw.WriteHeader(code)
-}
-
-func (c *Controller) Write(data []byte) (int, error) {
-	return c.rw.Write(data)
-}
+const (
+	OPTIONS = 1 << iota
+	GET
+	HEAD
+	POST
+	PUT
+	DELETE
+	TRACE
+	CONNECT
+)
 
 type httpHandler struct {
-	methods   map[string]reflect.Method
-	generator func() interface{}
-	htdocs    string
-	fileserver http.Handler
+	methods   map[int]map[string]reflect.Method
+	ctrl interface{}
 }
 
-func newHTTPHandler(gen func() interface{}, prefix, htdocs string) (*httpHandler, error) {
-	handler := &httpHandler{generator: gen, methods: make(map[string]reflect.Method)}
-	receiver := handler.generator()
+func Handler(ctrl interface{}) http.Handler {
+	t := reflect.TypeOf(ctrl)
 
-	if _, ok := receiver.(httpController); !ok {
-		return nil, errors.New("generator doesn't produce cyder.Controller elements")
+	methods := make(map[int]map[string]reflect.Method)
+	for i:=OPTIONS;i<=CONNECT;i++ {
+		methods[i] = make(map[string]reflect.Method)
 	}
 
-	t := reflect.TypeOf(receiver)
+	handler := &httpHandler{methods: methods, ctrl: ctrl}
 
-	if htdocs != "" {
-		handler.fileserver = http.FileServer(http.Dir(htdocs + prefix))
-	}
+	rrArgType := reflect.TypeOf(&RequestResponse{})
 
 	for i := 0; i < t.NumMethod(); i++ {
 		method := t.Method(i)
 		if method.PkgPath == "" {
-			handler.methods[strings.ToLower(method.Name)] = method
+			if method.Type.NumIn() < 2 || method.Type.In(1) != rrArgType {
+				// needs to have at least 2 arguments (receiver and *RequestResponse), otherwise we ignore it.
+				// also, if second argument is not a *RequestResponse, ignore method.
+				continue
+			}
+			if methodName, httpMethod, found := findMethod(method.Name); found {
+				handler.methods[httpMethod][methodName] = method
+			} else {
+				for i:=OPTIONS;i<=CONNECT;i++ {
+					handler.methods[i][methodName] = method
+				}
+			}
 		}
 	}
 
-	return handler, nil
+	return handler
+}
+
+var httpMethods = []string{"OPTIONS", "GET", "HEAD", "POST", "PUT", "DELETE", "TRACE", "CONNECT" }
+
+func findMethod(method string) (methodName string, httpMethod int, found bool) {
+	for i, m := range httpMethods {
+		if len(method) > len(m) {
+			if strings.ToUpper(method[:len(m)]) == m {
+				return strings.ToLower(method[len(m):]), i+1, true
+			}
+		}
+	}
+	return strings.ToLower(method), 0, false
+}
+
+func getHTTPMethod(httpMethod string) int {
+	for i, m := range httpMethods {
+		if m == httpMethod {
+			return i+1
+		}
+	}
+	return 0
+}
+
+type RequestResponse struct {
+	W http.ResponseWriter
+	R *http.Request
 }
 
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -123,35 +106,28 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	m, ok := h.methods[method]
 	if !ok {
-		if h.fileserver != nil {
-			h.fileserver.ServeHTTP(w, r)
-		} else {
-			http.Error(w, fmt.Sprintf("page %s not found", method), http.StatusNotFound)
-		}
+		http.Error(w, fmt.Sprintf("page %s not found", method), http.StatusNotFound)
 		return
 	}
 
-	if len(path_elements)+1 != m.Type.NumIn() {
+	if len(path_elements)+2 != m.Type.NumIn() {
+		log.Printf("expected %d arguments, got %d.", m.Type.NumIn(), len(path_elements))
 		http.Error(w, "incorrect number of arguments", http.StatusBadRequest)
 		return
 	}
 
-	receiver := h.generator()
-
-	args := []reflect.Value{reflect.ValueOf(receiver)}
+	args := []reflect.Value{reflect.ValueOf(h.ctrl), reflect.ValueOf(&RequestResponse{W: w, R: r})}
 
 	for i, arg := range path_elements {
-		funcarg := m.Type.In(i+1)
+		funcarg := m.Type.In(i+2)
 		newarg, err := convertArgument(arg, funcarg)
 		if err != nil {
-			http.Error(w, "incorrect argument", http.StatusBadRequest)
+			log.Printf("%s: converting arg %d (%s) failed: %v", method, i, arg, err)
+			http.Error(w, fmt.Sprintf("incorrect argument %d", i+1), http.StatusBadRequest)
 			return
 		}
 		args = append(args, newarg)
 	}
-
-	ctrl, _ := receiver.(httpController)
-	ctrl.setResponseWriter(w)
 
 	m.Func.Call(args)
 }
