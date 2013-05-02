@@ -4,33 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
-
-type MockResponseWriter struct {
-	StatusCode int
-	Buffer     *bytes.Buffer
-	header     http.Header
-}
-
-func NewMockResponseWriter() *MockResponseWriter {
-	return &MockResponseWriter{Buffer: new(bytes.Buffer), header: make(http.Header)}
-}
-
-func (w *MockResponseWriter) Header() http.Header {
-	return w.header
-}
-
-func (w *MockResponseWriter) WriteHeader(c int) {
-	w.StatusCode = c
-}
-
-func (w *MockResponseWriter) Write(b []byte) (int, error) {
-	if w.StatusCode == 0 {
-		w.StatusCode = http.StatusOK
-	}
-	return w.Buffer.Write(b)
-}
 
 type Foo struct { }
 
@@ -84,15 +60,13 @@ func TestHTTPHandler(t *testing.T) {
 func BenchmarkHTTPHandler(b *testing.B) {
 	b.StopTimer()
 
-	resp := NewMockResponseWriter()
-	foo := &Foo{}
-	handler := Handler(foo)
+	handler := Handler(&Foo{})
 
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		resp.Buffer.Reset()
+		resp := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "http://localhost:80/bla/foobar/1234/0.1", nil)
 		b.StartTimer()
 		handler.ServeHTTP(resp, req)

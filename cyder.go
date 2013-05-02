@@ -2,7 +2,6 @@ package cyder
 
 import (
 	"errors"
-	"io"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,13 +9,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-type httpController interface {
-	Header() http.Header
-	WriteHeader(int)
-	setResponseWriter(http.ResponseWriter)
-	io.Writer
-}
 
 const (
 	OPTIONS = 1 << iota
