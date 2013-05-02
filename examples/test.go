@@ -1,33 +1,33 @@
 package main
 
 import (
-	"github.com/akrennmair/cyder"
 	"fmt"
+	"github.com/akrennmair/cyder"
 	"net/http"
 )
 
-type Foo struct { }
+type Foo struct{}
 
 func (f *Foo) Index(rr *cyder.RequestResponse) {
-	rr.W.WriteHeader(200)
-	fmt.Fprintf(rr.W, "hello world from index")
+	rr.StatusCode(200)
+	fmt.Fprintf(rr, "hello world from index")
 }
 
 func (f *Foo) Foobar(rr *cyder.RequestResponse) {
-	rr.W.WriteHeader(200)
-	fmt.Fprintf(rr.W, "hello world from foobar")
+	rr.StatusCode(200)
+	fmt.Fprintf(rr, "hello world from foobar")
 }
 
 func (f *Foo) Pope(rr *cyder.RequestResponse, a int) {
-	rr.W.WriteHeader(200)
-	fmt.Fprintf(rr.W, "Pope: %d", a)
+	rr.StatusCode(200)
+	fmt.Fprintf(rr, "Pope: %d", a)
 }
 
-type Index struct { }
+type Index struct{}
 
 func (i *Index) Index(rr *cyder.RequestResponse) {
-	rr.W.WriteHeader(200)
-	fmt.Fprintf(rr.W, "hello world from /")
+	rr.StatusCode(200)
+	fmt.Fprintf(rr, "hello world from /")
 }
 
 func main() {
